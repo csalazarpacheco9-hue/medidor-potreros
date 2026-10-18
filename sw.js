@@ -1,6 +1,6 @@
 // Guarda la app en el celular para que abra SIN internet.
 // Si cambias index.html, sube el número de VERSION para que los celulares bajen la nueva.
-const VERSION = "potreros-v4";
+const VERSION = "potreros-v6";
 const ARCHIVOS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

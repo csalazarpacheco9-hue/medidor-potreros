@@ -21,13 +21,14 @@ label{font-size:13px;color:var(--mut)}.row{display:flex;gap:8px}.row>*{flex:1}
 canvas{width:100%;background:#0e1730;border-radius:10px;border:1px solid var(--ln)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:5px;border-bottom:1px solid var(--ln);text-align:left}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#0e1730;border-top:1px solid var(--ln)}
-nav button{flex:1;border-radius:0;margin:0;background:transparent;color:var(--mut);padding:16px 4px}nav button.on{color:var(--cy);border-top:3px solid var(--cy)}
+nav button{flex:1;border-radius:0;margin:0;background:transparent;color:var(--mut);padding:16px 2px;font-size:13px}nav button.on{color:var(--cy);border-top:3px solid var(--cy)}
 .pg{display:none}.pg.on{display:block}
 </style></head><body>
 <h1>📐 Medidor de Potreros</h1>
 <div class="mut">Gratis, sin cuentas ni anuncios. Funciona sin internet y guarda todo en este celular.</div>
 
 <div id="estado" class="mut" style="margin-top:6px"></div>
+<div id="total" class="card" style="margin:8px 0;padding:10px 14px"></div>
 <div id="aviso" class="card" style="display:none;border-color:var(--wa)"></div>
 <div class="pg on" id="p1">
  <div class="card"><h2>1 · Medir el área caminando</h2>
@@ -88,7 +89,17 @@ nav button{flex:1;border-radius:0;margin:0;background:transparent;color:var(--mu
   <div class="mut" id="dMsg"></div></div>
 </div>
 
-<nav><button class="on" data-p="p1">Área</button><button data-p="p2">Pasto</button><button data-p="p3">Resultado</button><button data-p="p4">Guardados</button></nav>
+<div class="pg" id="p5">
+ <div class="card"><h2>🗺 Mapa de la hacienda</h2>
+  <div class="mut">Aquí van apareciendo los potreros que mides, en su lugar real. <b>Toca un potrero</b> (en el mapa o en la lista de abajo) para marcarlo o quitarlo: el total suma solo los marcados.</div>
+  <canvas id="cvM" style="height:380px;touch-action:manipulation;margin-top:8px"></canvas>
+  <div class="big" id="mSum">—</div><div id="mUni" class="mut"></div>
+  <button class="s" id="mTodos">✔ Marcar todos</button><button class="s" id="mNinguno">✖ Quitar todos</button>
+  <div id="mChips" style="margin-top:8px"></div>
+ </div>
+</div>
+
+<nav><button class="on" data-p="p1">Área</button><button data-p="p2">Pasto</button><button data-p="p3">Resultado</button><button data-p="p4">Guardados</button><button data-p="p5">Mapa</button></nav>
 <script>
 const $=id=>document.getElementById(id);
 /* Todo se guarda DOS veces en el celular (localStorage + IndexedDB): si el navegador borra una, se recupera de la otra. */
@@ -118,7 +129,7 @@ function unidadesHTML(ha,per){const m2=ha*10000;
  <tr><td>Km²</td><td><b>${fmt(ha/100,4)}</b></td></tr>
  ${per?`<tr><td>Perímetro</td><td><b>${fmt(per,0)} m</b> (${fmt(per/1000,2)} km)</td></tr>`:""}</table>`}
 function pideCuadra(){const v=prompt("¿Cuántos m² tiene UNA cuadra en tu zona?\n(En la sierra ecuatoriana suele ser 7056 = 84 × 84 m)",cuadraM2());
- if(v===null)return;const n=parseFloat(v.replace(",","."));if(n>0){try{localStorage.setItem("cuadraM2",n)}catch(e){}dibuja();if(selD!==null){const i=store.get().findIndex(x=>x.nombre===selD);if(i>=0)verD(i)}}}
+ if(v===null)return;const n=parseFloat(v.replace(",","."));if(n>0){try{localStorage.setItem("cuadraM2",n)}catch(e){}dibuja();actualizaTotal();if(selD!==null){const i=store.get().findIndex(x=>x.nombre===selD);if(i>=0)verD(i)}}}
 /* ---- GPS ---- */
 $("bGps").onclick=()=>{ if(!navigator.geolocation){$("gps").textContent="Este navegador no tiene GPS.";return}
  if(watch!==null){navigator.geolocation.clearWatch(watch);watch=null;$("bGps").textContent="📡 Activar GPS";$("bMarca").disabled=$("bAuto").disabled=true;$("gps").textContent="GPS apagado.";return}
@@ -147,7 +158,7 @@ function dibuja(){$("np").textContent=pts.length+" puntos";
  pinta($("cv"),pts,true)}
 $("bGuarda").onclick=()=>{const n=$("nom").value.trim();if(!n)return alert("Ponle un nombre al potrero.");if(pts.length<3)return alert("Marca al menos 3 puntos.");
  const ya=store.get().find(x=>x.nombre===n);if(ya&&n!==editando&&!confirm("Ya existe un potrero llamado «"+n+"». ¿Reemplazarlo con esta medición?"))return;
- const l=store.get().filter(x=>x.nombre!==n);l.push({nombre:n,puntos:pts,ha:+areaHa(pts).toFixed(3),muestras:ya?ya.muestras:[],fecha:new Date().toISOString().slice(0,10)});store.set(l);refresca();editando=null;try{localStorage.removeItem("borrador")}catch(e){}idbSet("borrador",null);$("aviso").style.display="none";alert("Guardado ✔. Búscalo en la pestaña «Guardados» para copiar o enviar sus coordenadas.")};
+ const l=store.get().filter(x=>x.nombre!==n);l.push({nombre:n,puntos:pts,ha:+areaHa(pts).toFixed(3),muestras:ya?ya.muestras:[],fecha:new Date().toISOString().slice(0,10)});store.set(l);refresca();editando=null;try{localStorage.removeItem("borrador")}catch(e){}idbSet("borrador",null);$("aviso").style.display="none";alert("Guardado ✔\nTotal medido: "+fmt(totalHa(),2)+" ha en "+store.get().length+(store.get().length==1?" potrero":" potreros")+".\nBúscalo en la pestaña «Guardados» para copiar o enviar sus coordenadas.")};
 /* ---- pasto ---- */
 function potSel(){return store.get().find(x=>x.nombre===$("selP").value)}
 function guardaMuestras(){const l=store.get(),p=l.find(x=>x.nombre===$("selP").value);if(p){p.muestras=muestras;store.set(l)}}
@@ -170,8 +181,11 @@ $("fRest").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const a
 /* ---- lista ---- */
 let selD=null;
 function textoPuntos(p){return p.nombre+"\n"+p.puntos.map(x=>x[0].toFixed(6)+", "+x[1].toFixed(6)).join("\n")}
-function refresca(){const l=store.get();$("selP").innerHTML=l.map(p=>`<option>${p.nombre}</option>`).join("");$("selP").onchange();
- $("lista").innerHTML=l.length?"<table><tr><th>Potrero</th><th>ha</th><th>Pts</th><th></th></tr>"+l.map((p,i)=>`<tr onclick="verD(${i})" style="cursor:pointer"><td><b>${p.nombre}</b><br><span class="mut">${p.fecha}</span></td><td>${fmt(p.ha,2)} ha<br><span class=\"mut\">${fmt(p.ha*10000,0)} m²</span></td><td>${p.puntos.length}</td><td><button class="s" onclick="event.stopPropagation();borra(${i})">🗑</button></td></tr>`).join("")+"</table>":"Todavía no hay potreros guardados.";
+function totalHa(){return store.get().reduce((a,p)=>a+(+p.ha||0),0)}
+function actualizaTotal(){const l=store.get(),t=totalHa();
+ $("total").innerHTML=l.length?`🌾 Total medido: <b class="big" style="font-size:22px">${fmt(t,2)} ha</b> <span class="mut">en ${l.length} potrero${l.length==1?"":"s"}</span><div class="mut">${fmt(t*10000,0)} m² · ${fmt(t*10000/cuadraM2(),2)} cuadras</div>`:`🌾 Total medido: <b>0 ha</b> <span class="mut">— guarda un potrero y se irá sumando aquí</span>`}
+function refresca(){const l=store.get();actualizaTotal();exc=new Set([...exc].filter(n=>l.some(p=>p.nombre===n)));if($("p5").classList.contains("on"))mapa();$("selP").innerHTML=l.map(p=>`<option>${p.nombre}</option>`).join("");$("selP").onchange();
+ $("lista").innerHTML=l.length?"<table><tr><th>Potrero</th><th>ha</th><th>Pts</th><th></th></tr>"+l.map((p,i)=>`<tr onclick="verD(${i})" style="cursor:pointer"><td><b>${p.nombre}</b><br><span class="mut">${p.fecha}</span></td><td>${fmt(p.ha,2)} ha<br><span class=\"mut\">${fmt(p.ha*10000,0)} m²</span></td><td>${p.puntos.length}</td><td><button class="s" onclick="event.stopPropagation();borra(${i})">🗑</button></td></tr>`).join("")+`<tr><td><b>TOTAL</b></td><td><b>${fmt(totalHa(),2)} ha</b><br><span class="mut">${fmt(totalHa()*10000,0)} m²</span></td><td colspan="2"></td></tr></table>`:"Todavía no hay potreros guardados.";
  if(selD!==null&&!l.find(x=>x.nombre===selD))$("det").style.display="none"}
 window.verD=i=>{const p=store.get()[i];if(!p)return;selD=p.nombre;$("det").style.display="block";$("dNom").textContent=p.nombre;
  pinta($("cvD"),p.puntos,true);$("dHa").textContent=fmt(areaHa(p.puntos),2)+" ha";$("dUni").innerHTML=unidadesHTML(areaHa(p.puntos),perim(p.puntos));$("dInfo").textContent=p.puntos.length+" puntos · medido el "+p.fecha;
@@ -184,7 +198,43 @@ $("dWa").onclick=async()=>{const p=actD();if(!p)return;const t=textoPuntos(p);
 $("dEdit").onclick=()=>{const p=actD();if(!p)return;pts=p.puntos.map(x=>x.slice());$("nom").value=p.nombre;editando=p.nombre;dibuja();guardaBorrador();go("p1")};
 $("dPasto").onclick=()=>{const p=actD();if(!p)return;$("selP").value=p.nombre;$("selP").onchange();go("p2")};
 window.borra=i=>{if(confirm("¿Borrar este potrero?")){const l=store.get();l.splice(i,1);store.set(l);refresca()}};
-function go(id){document.querySelectorAll("nav button,.pg").forEach(e=>e.classList.remove("on"));document.querySelector(`nav button[data-p=${id}]`).classList.add("on");$(id).classList.add("on");if(id=="p3")calcula();window.scrollTo(0,0)}
+/* ---- mapa de la hacienda: todos los potreros guardados en su lugar real; se tocan para sumar ---- */
+let exc=new Set();try{exc=new Set(JSON.parse(localStorage.getItem("mapaExcluidos")||"[]"))}catch(e){}
+let geoM=[];
+function guardaExc(){try{localStorage.setItem("mapaExcluidos",JSON.stringify([...exc]))}catch(e){}}
+function etiquetaCorta(n){n=n.trim();let m=n.match(/^potrero\s*(?:n[°º.]?\s*)?(\d+)$/i);if(m)return m[1];            // «Potrero 4» -> 4
+ m=n.match(/^(.*\S)\s+(\d+)$/);if(m){const w=m[1].split(/\s+/).filter(x=>!/^(potrero|de|del|la|el|para|los|las)$/i.test(x));if(w.length)return w[w.length-1][0].toUpperCase()+m[2]}   // «Potrero para terneros 1» -> T1
+ return n.slice(0,6)}
+function dentro(pt,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const[xi,yi]=poly[i],[xj,yj]=poly[j];if((yi>pt[1])!==(yj>pt[1])&&pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi)c=!c}return c}
+function areaPx(poly){let a=0;for(let i=0;i<poly.length;i++){const j=(i+1)%poly.length;a+=poly[i][0]*poly[j][1]-poly[j][0]*poly[i][1]}return Math.abs(a)/2}
+function resumenMapa(l){const sel=l.filter(p=>!exc.has(p.nombre)),t=sel.reduce((a,p)=>a+(+p.ha||0),0);
+ $("mSum").textContent=fmt(t,2)+" ha";$("mUni").innerHTML=`Marcados: <b>${sel.length}</b> de ${l.length} potreros · ${fmt(t*10000,0)} m² · ${fmt(t*10000/cuadraM2(),2)} cuadras`;
+ $("mChips").innerHTML=l.map((p,i)=>`<button class="${exc.has(p.nombre)?'s':''}" onclick="alternaP(${i})" style="padding:8px 10px;font-size:14px">${exc.has(p.nombre)?'☐':'☑'} ${p.nombre} · ${fmt(p.ha,2)} ha</button>`).join("")}
+window.alternaP=i=>{const p=store.get()[i];if(!p)return;exc.has(p.nombre)?exc.delete(p.nombre):exc.add(p.nombre);guardaExc();mapa()};
+function mapa(){const cv=$("cvM"),l=store.get(),W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
+ const dpr=window.devicePixelRatio||1;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);const g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);geoM=[];
+ const borr=pts.length&&!l.some(p=>JSON.stringify(p.puntos)===JSON.stringify(pts))?pts:[];      // el borrador solo se dibuja si todavía no está guardado
+ const all=l.flatMap(p=>p.puntos).concat(borr);
+ if(!all.length){g.fillStyle="#8fa0c8";g.font="14px sans-serif";g.fillText("Aún no hay potreros guardados.",16,30);resumenMapa(l);return}
+ const la=all.map(p=>p[0]),lo=all.map(p=>p[1]),minla=Math.min(...la),maxla=Math.max(...la),minlo=Math.min(...lo),maxlo=Math.max(...lo),k=Math.cos((minla+maxla)/2*Math.PI/180);
+ const w=Math.max((maxlo-minlo)*k,1e-7),h=Math.max(maxla-minla,1e-7),sc=Math.min((W-36)/w,(H-36)/h),ox=(W-w*sc)/2,oy=(H-h*sc)/2;
+ const X=q=>ox+(q[1]-minlo)*k*sc,Y=q=>H-oy-(q[0]-minla)*sc;
+ const trazo=P=>{g.beginPath();P.forEach((q,i)=>i?g.lineTo(X(q),Y(q)):g.moveTo(X(q),Y(q)));g.closePath()};
+ const orden=l.map((p,i)=>i).sort((a,b)=>(exc.has(l[b].nombre)?1:0)-(exc.has(l[a].nombre)?1:0));      // los no marcados primero, los marcados encima
+ orden.forEach(i=>{const p=l[i],off=exc.has(p.nombre);trazo(p.puntos);
+  g.fillStyle=off?"rgba(143,160,200,.10)":"rgba(0,245,160,.30)";g.fill();g.strokeStyle=off?"#52618a":"#00f5a0";g.lineWidth=off?1.5:3;g.stroke();
+  const xy=p.puntos.map(q=>[X(q),Y(q)]);geoM.push({i,xy,a:areaPx(xy)});
+  const cx=xy.reduce((a,q)=>a+q[0],0)/xy.length,cy=xy.reduce((a,q)=>a+q[1],0)/xy.length;
+  g.font="bold 14px sans-serif";g.textAlign="center";g.textBaseline="middle";g.lineWidth=4;g.strokeStyle="#0b1226";g.strokeText(etiquetaCorta(p.nombre),cx,cy);g.fillStyle=off?"#8fa0c8":"#fff";g.fillText(etiquetaCorta(p.nombre),cx,cy)});
+ if(borr.length){g.setLineDash([6,4]);g.strokeStyle="#00e5ff";g.lineWidth=2.5;g.beginPath();borr.forEach((q,i)=>i?g.lineTo(X(q),Y(q)):g.moveTo(X(q),Y(q)));if(borr.length>2)g.closePath();g.stroke();g.setLineDash([]);
+  borr.forEach(q=>{g.beginPath();g.arc(X(q),Y(q),4,0,7);g.fillStyle="#00e5ff";g.fill()})}
+ resumenMapa(l)}
+$("cvM").addEventListener("pointerup",e=>{const r=$("cvM").getBoundingClientRect(),pt=[e.clientX-r.left,e.clientY-r.top];
+ const hit=geoM.filter(x=>dentro(pt,x.xy)).sort((a,b)=>a.a-b.a)[0];if(!hit)return;const p=store.get()[hit.i];if(!p)return;exc.has(p.nombre)?exc.delete(p.nombre):exc.add(p.nombre);guardaExc();mapa()});
+$("mTodos").onclick=()=>{exc.clear();guardaExc();mapa()};
+$("mNinguno").onclick=()=>{store.get().forEach(p=>exc.add(p.nombre));guardaExc();mapa()};
+window.addEventListener("resize",()=>{if($("p5").classList.contains("on"))mapa()});
+function go(id){document.querySelectorAll("nav button,.pg").forEach(e=>e.classList.remove("on"));document.querySelector(`nav button[data-p=${id}]`).classList.add("on");$(id).classList.add("on");if(id=="p3")calcula();if(id=="p5")mapa();window.scrollTo(0,0)}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.p));
 refresca();dibuja();
 async function arranque(){
