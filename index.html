@@ -27,9 +27,12 @@ nav button{flex:1;border-radius:0;margin:0;background:transparent;color:var(--mu
 <h1>📐 Medidor de Potreros</h1>
 <div class="mut">Gratis, sin cuentas ni anuncios. Funciona sin internet y guarda todo en este celular.</div>
 
+<div id="estado" class="mut" style="margin-top:6px"></div>
+<div id="aviso" class="card" style="display:none;border-color:var(--wa)"></div>
 <div class="pg on" id="p1">
  <div class="card"><h2>1 · Medir el área caminando</h2>
-  <label>Nombre del potrero</label><input id="nom" placeholder="Ej: Potrero 3">
+  <button id="bNuevo">➕ Nuevo potrero</button>
+  <label>Nombre del potrero</label><input id="nom" placeholder="Ej: Potrero 3" oninput="guardaBorrador()">
   <div id="gps" class="mut">GPS apagado.</div>
   <button id="bGps">📡 Activar GPS</button>
   <div class="mut" style="margin:6px 0">Párate en cada esquina (o camina el borde) y toca «Marcar punto». Espera a que la precisión baje de ~8 m.</div>
@@ -68,7 +71,7 @@ nav button{flex:1;border-radius:0;margin:0;background:transparent;color:var(--mu
  <div class="card"><h2>3 · Cuántas vacas caben</h2><div id="cap" class="mut">Mide el área y el pasto primero.</div></div>
  <div class="card"><h2>Pasar al sistema del computador</h2>
   <div class="mut">En DataBiEc Ganadero: Potreros → Registrar y editar → «Forma real del potrero» → pega los puntos → «Calcular hectáreas y guardar forma».</div>
-  <div class="mut">Las coordenadas de cada potrero están en la pestaña <b>Guardados</b>: toca un potrero para copiarlas o enviarlas.</div><button class="s" id="bResp">⬇ Descargar respaldo</button>
+  <div class="mut">Las coordenadas de cada potrero están en la pestaña <b>Guardados</b>: toca un potrero para copiarlas o enviarlas.</div><button class="s" id="bResp">⬇ Descargar respaldo</button><button class="s" id="bRest">⬆ Restaurar respaldo</button><input type="file" id="fRest" accept=".json,application/json" style="display:none">
   <div class="mut" id="msg"></div>
  </div>
 </div>
@@ -88,7 +91,13 @@ nav button{flex:1;border-radius:0;margin:0;background:transparent;color:var(--mu
 <nav><button class="on" data-p="p1">Área</button><button data-p="p2">Pasto</button><button data-p="p3">Resultado</button><button data-p="p4">Guardados</button></nav>
 <script>
 const $=id=>document.getElementById(id);
-const store={get(){try{return JSON.parse(localStorage.getItem("potreros")||"[]")}catch(e){return[]}},set(v){try{localStorage.setItem("potreros",JSON.stringify(v))}catch(e){}}};
+/* Todo se guarda DOS veces en el celular (localStorage + IndexedDB): si el navegador borra una, se recupera de la otra. */
+function idb(){return new Promise((ok,no)=>{const r=indexedDB.open("medidor",1);r.onupgradeneeded=()=>r.result.createObjectStore("k");r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function idbSet(k,v){try{const d=await idb();d.transaction("k","readwrite").objectStore("k").put(v,k)}catch(e){}}
+async function idbGet(k){try{const d=await idb();return await new Promise(ok=>{const q=d.transaction("k").objectStore("k").get(k);q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(undefined)})}catch(e){return undefined}}
+const store={get(){try{return JSON.parse(localStorage.getItem("potreros")||"[]")}catch(e){return[]}},set(v){try{localStorage.setItem("potreros",JSON.stringify(v))}catch(e){}idbSet("potreros",v)}};
+let editando=null;
+function guardaBorrador(){const d=pts.length||$("nom").value?{nom:$("nom").value,pts,editando}:null;try{if(d)localStorage.setItem("borrador",JSON.stringify(d));else localStorage.removeItem("borrador")}catch(e){}idbSet("borrador",d)}
 let pts=[],watch=null,pos=null,auto=false,muestras=[];
 /* ---- matemática (también probada aparte) ---- */
 function areaHa(p){ if(p.length<3)return 0; const R=6371008.8,la0=p.reduce((s,x)=>s+x[0],0)/p.length*Math.PI/180;
@@ -120,11 +129,12 @@ $("bGps").onclick=()=>{ if(!navigator.geolocation){$("gps").textContent="Este na
   if(auto&&(!pts.length||dist(pts[pts.length-1],pos)>=10)&&ac<=15)marca();},
   e=>{$("gps").textContent="No pude leer el GPS: "+(e.code==1?"permiso negado (actívalo en el navegador).":e.message)},{enableHighAccuracy:true,maximumAge:0,timeout:30000});
  $("bGps").textContent="⏹ Apagar GPS"};
-function marca(){if(!pos)return;pts.push([+pos[0].toFixed(6),+pos[1].toFixed(6)]);dibuja()}
+function marca(){if(!pos)return;pts.push([+pos[0].toFixed(6),+pos[1].toFixed(6)]);dibuja();guardaBorrador()}
 $("bMarca").onclick=marca;
-$("bDesh").onclick=()=>{pts.pop();dibuja()};
+$("bDesh").onclick=()=>{pts.pop();dibuja();guardaBorrador()};
 $("bAuto").onclick=()=>{auto=!auto;$("bAuto").textContent="Auto cada 10 m: "+(auto?"SÍ":"NO")};
-$("bLimpia").onclick=()=>{if(!pts.length||confirm("¿Borrar los puntos marcados?")){pts=[];dibuja()}};
+$("bLimpia").onclick=()=>{if(!pts.length||confirm("¿Borrar los puntos marcados?")){pts=[];dibuja();guardaBorrador()}};
+$("bNuevo").onclick=()=>{if(pts.length&&!confirm("Tienes puntos marcados sin guardar. ¿Descartarlos y empezar un potrero nuevo?"))return;pts=[];editando=null;$("nom").value="";$("aviso").style.display="none";dibuja();guardaBorrador();$("nom").focus()};
 function pinta(c,P,numeros){const g=c.getContext("2d");g.clearRect(0,0,c.width,c.height);if(!P.length)return;
  const la=P.map(p=>p[0]),lo=P.map(p=>p[1]),k=Math.cos(la[0]*Math.PI/180);
  const minla=Math.min(...la),maxla=Math.max(...la),minlo=Math.min(...lo),maxlo=Math.max(...lo);
@@ -136,7 +146,8 @@ function dibuja(){$("np").textContent=pts.length+" puntos";
  const ha=areaHa(pts);$("ha").textContent=pts.length>2?fmt(ha,2)+" ha":"— ha";$("uni").innerHTML=pts.length>2?unidadesHTML(ha,perim(pts)):"";$("per").textContent=pts.length>2?"":"Marca al menos 3 puntos.";
  pinta($("cv"),pts,true)}
 $("bGuarda").onclick=()=>{const n=$("nom").value.trim();if(!n)return alert("Ponle un nombre al potrero.");if(pts.length<3)return alert("Marca al menos 3 puntos.");
- const l=store.get().filter(x=>x.nombre!==n);l.push({nombre:n,puntos:pts,ha:+areaHa(pts).toFixed(3),muestras:[],fecha:new Date().toISOString().slice(0,10)});store.set(l);refresca();alert("Guardado ✔. Búscalo en la pestaña «Guardados» para copiar o enviar sus coordenadas.")};
+ const ya=store.get().find(x=>x.nombre===n);if(ya&&n!==editando&&!confirm("Ya existe un potrero llamado «"+n+"». ¿Reemplazarlo con esta medición?"))return;
+ const l=store.get().filter(x=>x.nombre!==n);l.push({nombre:n,puntos:pts,ha:+areaHa(pts).toFixed(3),muestras:ya?ya.muestras:[],fecha:new Date().toISOString().slice(0,10)});store.set(l);refresca();editando=null;try{localStorage.removeItem("borrador")}catch(e){}idbSet("borrador",null);$("aviso").style.display="none";alert("Guardado ✔. Búscalo en la pestaña «Guardados» para copiar o enviar sus coordenadas.")};
 /* ---- pasto ---- */
 function potSel(){return store.get().find(x=>x.nombre===$("selP").value)}
 function guardaMuestras(){const l=store.get(),p=l.find(x=>x.nombre===$("selP").value);if(p){p.muestras=muestras;store.set(l)}}
@@ -153,6 +164,9 @@ function calcula(){const p=potSel();if(!p||!muestras.length){$("cap").textConten
  $("cap").innerHTML=`<b>${p.nombre}</b> · ${p.ha} ha<br>Pasto seco: <b>${Math.round(r.kgMSha)} kg/ha</b><br>Aprovechable en total: <b>${Math.round(r.disp)} kg</b><br>Una UGG (450 kg) come ≈ ${r.dia.toFixed(1)} kg/día<br><div class="big">${r.ugg.toFixed(1)} UGG</div><div class="mut">caben durante ${$("di").value} días (≈ ${r.uggHa.toFixed(1)} UGG/ha). Una vaca adulta ≈ 1 UGG; una ternera, menos.</div><div class="mut warn" style="margin-top:8px">Es una estimación: cambia con la lluvia, la época y el tipo de pasto. Repite la medición en cada rotación.</div>`}
 /* ---- exportar ---- */
 $("bResp").onclick=()=>{const b=new Blob([JSON.stringify(store.get(),null,1)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="potreros_respaldo.json";a.click()};
+$("bRest").onclick=()=>$("fRest").click();
+$("fRest").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const a=JSON.parse(await f.text());if(!Array.isArray(a)||a.some(x=>!x.nombre||!Array.isArray(x.puntos)))throw 0;
+ const l=store.get();a.forEach(x=>{const i=l.findIndex(y=>y.nombre===x.nombre);if(i>=0)l[i]=x;else l.push(x)});store.set(l);refresca();$("msg").textContent="Restaurados "+a.length+" potreros ✔"}catch(err){$("msg").textContent="Ese archivo no es un respaldo de potreros."}e.target.value=""};
 /* ---- lista ---- */
 let selD=null;
 function textoPuntos(p){return p.nombre+"\n"+p.puntos.map(x=>x[0].toFixed(6)+", "+x[1].toFixed(6)).join("\n")}
@@ -167,11 +181,25 @@ $("dCopia").onclick=async()=>{const p=actD();if(!p)return;const t=$("dTxt").valu
 $("dWa").onclick=async()=>{const p=actD();if(!p)return;const t=textoPuntos(p);
  try{if(navigator.share){await navigator.share({title:"Puntos de "+p.nombre,text:t});return}}catch(e){if(e.name==="AbortError")return}
  window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank")};
-$("dEdit").onclick=()=>{const p=actD();if(!p)return;pts=p.puntos.map(x=>x.slice());$("nom").value=p.nombre;dibuja();go("p1")};
+$("dEdit").onclick=()=>{const p=actD();if(!p)return;pts=p.puntos.map(x=>x.slice());$("nom").value=p.nombre;editando=p.nombre;dibuja();guardaBorrador();go("p1")};
 $("dPasto").onclick=()=>{const p=actD();if(!p)return;$("selP").value=p.nombre;$("selP").onchange();go("p2")};
 window.borra=i=>{if(confirm("¿Borrar este potrero?")){const l=store.get();l.splice(i,1);store.set(l);refresca()}};
 function go(id){document.querySelectorAll("nav button,.pg").forEach(e=>e.classList.remove("on"));document.querySelector(`nav button[data-p=${id}]`).classList.add("on");$(id).classList.add("on");if(id=="p3")calcula();window.scrollTo(0,0)}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.p));
 refresca();dibuja();
-if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+async function arranque(){
+ let l=store.get();
+ if(!l.length){const c=await idbGet("potreros");if(Array.isArray(c)&&c.length){try{localStorage.setItem("potreros",JSON.stringify(c))}catch(e){}l=c;refresca();$("aviso").style.display="block";$("aviso").innerHTML="♻️ El navegador había borrado los potreros; recuperé <b>"+c.length+"</b> de la copia de seguridad interna.";}}
+ else idbSet("potreros",l);
+ let b=null;try{b=JSON.parse(localStorage.getItem("borrador")||"null")}catch(e){}
+ if(!b)b=await idbGet("borrador");
+ if(b&&(b.pts&&b.pts.length||b.nom)&&!pts.length){pts=b.pts||[];editando=b.editando||null;$("nom").value=b.nom||"";dibuja();$("aviso").style.display="block";
+  $("aviso").innerHTML="📍 Recuperé tu medición sin terminar: <b>"+(b.nom||"sin nombre")+"</b>, "+pts.length+" puntos. Activa el GPS y sigue marcando, o toca «Guardar potrero». Para descartarla: «➕ Nuevo potrero».";}
+ try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist()}catch(e){}
+ mostrarEstado()}
+async function mostrarEstado(){let per=false;try{per=!!(navigator.storage&&navigator.storage.persisted&&await navigator.storage.persisted())}catch(e){}
+ let off=false;try{off=!!(navigator.serviceWorker&&navigator.serviceWorker.controller)}catch(e){}
+ $("estado").innerHTML=(off?'<span style="color:var(--ok)">✔ Listo para usar sin internet</span>':'<span class="warn">⚠ Aún no está listo sin internet: ábrela una vez con señal y espera unos segundos</span>')+' · '+(per?'💾 guardado protegido':'💾 guardado normal')}
+arranque();
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").then(()=>navigator.serviceWorker.ready).then(()=>setTimeout(mostrarEstado,800)).catch(()=>{}))}
 </script></body></html>
